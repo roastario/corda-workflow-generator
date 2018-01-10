@@ -120,7 +120,6 @@ class GeneratedWorkFlow<T : LinearState>(val start: ContinuingTransition<T>,
 
 
     private fun buildWhatStageCheck(fileSpec: FileSpec.Builder) {
-
         val functionBuilder = FunSpec.builder("getStage").addParameter("toCheck", start.clazz)
         reversedOrder(end, start).forEach { stage ->
             functionBuilder.beginControlFlow("if (" + buildStageCheckName(stage) + "(toCheck))")
