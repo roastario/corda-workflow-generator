@@ -1,31 +1,29 @@
 package com.stefano.corda.deposits
 
 import com.google.common.base.CaseFormat
-import com.squareup.kotlinpoet.ClassName
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.TypeSpec
+import com.squareup.kotlinpoet.*
+import com.stefano.corda.deposits.GeneratedWorkFlowMultiState.Companion.reversedOrder
 import net.corda.core.contracts.LinearState
 import kotlin.reflect.KClass
 
-class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearState, out LinearState>,
-                                  val end: ContinuingTransition2<out LinearState, out LinearState> = Companion.getEnd(start)
+class GeneratedWorkFlowMultiState(val start: ContinuingTransition<out LinearState, out LinearState>,
+                                  val end: ContinuingTransition<out LinearState, out LinearState> = Companion.getEnd(start)
 ) {
     object Companion {
-        fun getEnd(start: ContinuingTransition2<out LinearState, out LinearState>): ContinuingTransition2<out LinearState, out LinearState> {
+        fun getEnd(start: ContinuingTransition<out LinearState, out LinearState>): ContinuingTransition<out LinearState, out LinearState> {
             return inOrder(start).last()
         }
 
 
-        internal fun inOrder(toStartFrom: ContinuingTransition2<out LinearState, out LinearState>): Iterable<ContinuingTransition2<out LinearState, out LinearState>> {
+        internal fun inOrder(toStartFrom: ContinuingTransition<out LinearState, out LinearState>): Iterable<ContinuingTransition<out LinearState, out LinearState>> {
             return Iterable({
-                object : Iterator<ContinuingTransition2<out LinearState, out LinearState>> {
-                    var next: ContinuingTransition2<out LinearState, out LinearState>? = toStartFrom
+                object : Iterator<ContinuingTransition<out LinearState, out LinearState>> {
+                    var next: ContinuingTransition<out LinearState, out LinearState>? = toStartFrom
                     override fun hasNext(): Boolean {
                         return next != null
                     }
 
-                    override fun next(): ContinuingTransition2<out LinearState, out LinearState> {
+                    override fun next(): ContinuingTransition<out LinearState, out LinearState> {
                         val current = next;
                         next = next!!.nextStage;
                         return current!!
@@ -35,16 +33,16 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
         }
 
 
-        internal fun <T : LinearState> reversedOrder(toStartFrom: ContinuingTransition2<in LinearState, in LinearState>,
-                                                     toEndAt: ContinuingTransition2<in LinearState, in LinearState>?): Iterable<ContinuingTransition2<out LinearState, out LinearState>> {
+        internal fun reversedOrder(toStartFrom: ContinuingTransition<out LinearState, out LinearState>,
+                                   toEndAt: ContinuingTransition<out LinearState, out LinearState>?): Iterable<ContinuingTransition<out LinearState, out LinearState>> {
             return Iterable({
-                object : Iterator<ContinuingTransition2<out LinearState, out LinearState>> {
-                    var previous: ContinuingTransition2<out LinearState, out LinearState>? = toStartFrom;
+                object : Iterator<ContinuingTransition<out LinearState, out LinearState>> {
+                    var previous: ContinuingTransition<out LinearState, out LinearState>? = toStartFrom;
                     override fun hasNext(): Boolean {
                         return previous != null && previous != toEndAt
                     }
 
-                    override fun next(): ContinuingTransition2<out LinearState, out LinearState> {
+                    override fun next(): ContinuingTransition<out LinearState, out LinearState> {
                         val current = previous;
                         previous = previous!!.previousState;
                         return current!!;
@@ -55,8 +53,8 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
     }
 
     fun printOutFlow(): GeneratedWorkFlowMultiState {
-        var next: ContinuingTransition2<out LinearState, out LinearState>? = start;
-        var previous: ContinuingTransition2<out LinearState, out LinearState>? = null
+        var next: ContinuingTransition<out LinearState, out LinearState>? = start;
+        var previous: ContinuingTransition<out LinearState, out LinearState>? = null
         while (next != null) {
             println(previous?.stageName + "[" + previous?.thisClass?.simpleName + "] -> "
                     + next.stageName + "[" + next.thisClass.simpleName + "] must not be null: "
@@ -71,22 +69,18 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
     }
 
     fun generate() {
-
         val file = FileSpec.builder("com.r3.workflows.generated", "Output")
-
-
         //step 1 - divide all the various stages and states into class specific lanes
-        val laneHolder = HashMap<KClass<*>, MutableList<ContinuingTransition2<*, *>>>()
+        val laneHolder = HashMap<KClass<out LinearState>, MutableList<ContinuingTransition<*, *>>>()
         Companion.inOrder(start).forEach { stage ->
             laneHolder.computeIfAbsent(stage.thisClass, { _ -> ArrayList() }).add(stage);
         }
-
         laneHolder.forEach({ (kclass, stages) ->
             generateWhatStageChecks(file, kclass, stages)
         })
-
+        generateGlobalWhatStage(file, laneHolder.keys)
+        generateGlobalCanTransition(file);
         file.build().writeTo(System.out)
-
     }
 
     private fun generateCheckClassName(kclass: KClass<*>): String {
@@ -97,27 +91,80 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
         return kclass.simpleName + "WorkflowStages";
     }
 
-    private fun generateEnumConstantName(stage: ContinuingTransition2<out LinearState, out LinearState>): String {
+    private fun generateEnumConstantName(stage: ContinuingTransition<out LinearState, out LinearState>): String {
         return CaseFormat.LOWER_CAMEL.to(CaseFormat.UPPER_UNDERSCORE, stage.stageName)
     }
 
-    private fun generateWhatStageChecks(file: FileSpec.Builder, kclass: KClass<*>, stages: MutableList<ContinuingTransition2<*, *>>) {
+    private fun generateWhatStageChecks(file: FileSpec.Builder, kclass: KClass<*>, stages: MutableList<ContinuingTransition<*, *>>) {
         val className = generateCheckClassName(kclass);
         val classBuilder = TypeSpec.classBuilder(className)
+        val companionObject = TypeSpec.companionObjectBuilder();
+
         generateStageEnums(kclass, stages, classBuilder)
         val endOfClassStageList = stages.last()
-
-
         for (stage in stages) {
-            generateIsStageCheck(stage, stages, endOfClassStageList, classBuilder)
+            generateIsStageCheck(stage, stages, endOfClassStageList, companionObject)
         }
-
-        generateGetStage(kclass, stages, classBuilder)
-
+        generateGetStage(kclass, stages, companionObject)
+        classBuilder.companionObject(companionObject.build())
         file.addType(classBuilder.build());
     }
 
-    private fun generateGetStage(kclass: KClass<*>, stages: MutableList<ContinuingTransition2<*, *>>, classBuilder: TypeSpec.Builder) {
+    private fun generateGlobalWhatStage(file: FileSpec.Builder, classes: Set<KClass<out LinearState>>) {
+
+        val functionBuilder = FunSpec.builder("getStage")
+                .addParameter("toCheck", LinearState::class)
+                .returns(Any::class)
+
+
+        functionBuilder.beginControlFlow("return when (toCheck) ")
+
+        for (kclass in classes) {
+            functionBuilder.addStatement("is %T -> %L", kclass, generateCheckClassName(kclass) + "." + "getStage(toCheck)")
+        }
+
+        functionBuilder.addStatement("else -> throw %T()", IllegalStateException::class)
+        functionBuilder.endControlFlow()
+        file.addFunction(functionBuilder.build())
+    }
+
+    private fun generateGlobalCanTransition(file: FileSpec.Builder) {
+
+        val functionBuilder = FunSpec.builder("canTransition")
+                .addParameter("input", LinearState::class)
+                .addParameter("output", LinearState::class)
+                .addParameter("transitionToken", ClassName.bestGuess("Any?"))
+                .returns(Boolean::class)
+
+        functionBuilder.addStatement("val inputStage = getStage(input)")
+        functionBuilder.addStatement("val outputStage = getStage(output)")
+
+        reversedOrder(end, null).forEach {
+            functionBuilder.beginControlFlow("if (inputStage === %T.%L)",
+                    ClassName.bestGuess(generateCheckClassName(it.thisClass) + '.'
+                            + generateEnumCollectiveName(it.thisClass)),
+                    generateEnumConstantName(it))
+
+            it.nextStage?.let { nextStage ->
+                functionBuilder.addStatement("return outputStage === %T.%L && %T::%L.get(output as %T) == %L",
+                        ClassName.bestGuess(generateCheckClassName(nextStage.thisClass) + '.'
+                                + generateEnumCollectiveName(nextStage.thisClass)),
+                        generateEnumConstantName(nextStage),
+                        nextStage.thisClass,
+                        nextStage.partyAllowedToTransition!!.name,
+                        nextStage.thisClass,
+                        "transitionToken"
+                )
+            }
+
+            functionBuilder.endControlFlow()
+        }
+
+        functionBuilder.addStatement("return false")
+        file.addFunction(functionBuilder.build())
+    }
+
+    private fun generateGetStage(kclass: KClass<*>, stages: MutableList<ContinuingTransition<*, *>>, classBuilder: TypeSpec.Builder) {
         val functionBuilder = FunSpec.builder("getStage").addParameter("toCheck", kclass)
 
         stages.constrainedReverse(stages.last(), null).forEach { stage ->
@@ -127,16 +174,16 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
         }
 
         functionBuilder.returns(ClassName.bestGuess(generateEnumCollectiveName(kclass)))
-        functionBuilder.addStatement("throw %T()", IllegalStateException::class)
+        functionBuilder.addStatement("return " + generateEnumCollectiveName(kclass) + '.' + "UNKNOWN")
         classBuilder.addFunction(functionBuilder.build())
 
     }
 
-    private fun buildFullEnumName(stage: ContinuingTransition2<*, *>): Any? {
+    private fun buildFullEnumName(stage: ContinuingTransition<*, *>): Any? {
         return generateEnumCollectiveName(stage.thisClass) + "." + generateEnumConstantName(stage)
     }
 
-    private fun generateIsStageCheck(stage: ContinuingTransition2<*, *>, stages: MutableList<ContinuingTransition2<*, *>>, endOfClassStageList: ContinuingTransition2<*, *>, classBuilder: TypeSpec.Builder) {
+    private fun generateIsStageCheck(stage: ContinuingTransition<*, *>, stages: MutableList<ContinuingTransition<*, *>>, endOfClassStageList: ContinuingTransition<*, *>, classBuilder: TypeSpec.Builder) {
         val checkBuilder = FunSpec.builder(buildStageCheckName(stage))
         checkBuilder.addParameter("toCheck", stage.thisClass)
         checkBuilder.returns(Boolean::class)
@@ -155,17 +202,18 @@ class GeneratedWorkFlowMultiState(val start: ContinuingTransition2<out LinearSta
         classBuilder.addFunction(checkBuilder.build())
     }
 
-    private fun generateStageEnums(kclass: KClass<*>, stages: MutableList<ContinuingTransition2<*, *>>, classBuilder: TypeSpec.Builder) {
+    private fun generateStageEnums(kclass: KClass<*>, stages: MutableList<ContinuingTransition<*, *>>, classBuilder: TypeSpec.Builder) {
         val enums = TypeSpec.enumBuilder(generateEnumCollectiveName(kclass));
         for (stage in stages) {
             enums.addEnumConstant(generateEnumConstantName(stage))
         }
+        enums.addEnumConstant("UNKNOWN")
         classBuilder.addType(enums.build());
     }
 }
 
 
-private fun buildStageCheckName(it: ContinuingTransition2<*, *>) =
+private fun buildStageCheckName(it: ContinuingTransition<*, *>) =
         "isInStage" + it.stageName.capitalize()
 
 private fun <E> Iterable<E>.constrainedReverse(toStartFrom: E, toStopAt: E?): Iterable<E> {
