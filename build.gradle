@@ -13,6 +13,7 @@ group 'com.r3.corda.workflow'
 version '1.0-SNAPSHOT'
 
 apply plugin: 'kotlin'
+apply plugin: 'java'
 
 repositories {
     mavenLocal()
@@ -23,6 +24,7 @@ repositories {
 
 dependencies {
     compile "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     compile 'com.squareup:kotlinpoet:0.6.0'
     compile "net.corda:corda-core:2.0.0"
     compile "com.google.guava:guava:21.0"
