@@ -1,4 +1,4 @@
-package com.stefano.corda.workflow
+package com.r3.workflows.generation
 
 import net.corda.core.contracts.LinearState
 import net.corda.core.contracts.UniqueIdentifier
