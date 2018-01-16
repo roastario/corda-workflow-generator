@@ -13,8 +13,8 @@ class FileUploadAndCheckWorkflowContract {
 
     interface Commands : CommandData {
         class Open : Commands
-        class AcceptTenantDeductions : Commands
-        class Fund : Commands
+        class FileAttached : Commands
+        class DocumentReviewed : Commands
         class LandlordDeduct : Commands
         class TenantDeduct : Commands
         class RequestRefund : Commands

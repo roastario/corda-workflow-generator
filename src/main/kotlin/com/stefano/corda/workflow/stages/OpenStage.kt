@@ -21,36 +21,7 @@ class OpenStage<T : LinearState>(private val stateClass: KClass<T>) : Stage<T, U
 
     object Companion {
 
-        fun buildDumbResponderFlow(flowObject: TypeSpec.Builder) {
 
-            val responderBuilder = TypeSpec.classBuilder("Responder")
-                    .addAnnotation(InitiatingFlow::class)
-                    .addAnnotation(AnnotationSpec.builder(InitiatedBy::class).addMember("Inititator::class").build())
-                    .primaryConstructor(FunSpec.constructorBuilder().addParameter("val counterpartySession", FlowSession::class).build())
-                    .superclass(ParameterizedTypeName.get(FlowLogic::class, SignedTransaction::class))
-
-            val callBuilder = FunSpec.builder("call").returns(SignedTransaction::class).addModifiers(KModifier.OVERRIDE).addAnnotation(Suspendable::class)
-
-
-            val blindSignText = """
-                val flow = object : %T(counterpartySession) {
-                    @Suspendable
-                    override fun checkTransaction(stx: SignedTransaction) {
-                        //all checks delegated to contract
-                    }
-                }
-
-                val stx = subFlow(flow)
-                return waitForLedgerCommit(stx.id)
-            """
-
-
-            callBuilder.addStatement(blindSignText, SignTransactionFlow::class)
-            responderBuilder.addFunction(callBuilder.build())
-            flowObject.addType(responderBuilder.build())
-
-
-        }
 
 
     }
@@ -81,7 +52,7 @@ class OpenStage<T : LinearState>(private val stateClass: KClass<T>) : Stage<T, U
 
         initiatorBuilder.addFunction(callBuilder.build())
         flowObject.addType(initiatorBuilder.build())
-        Companion.buildDumbResponderFlow(flowObject)
+        buildDumbResponderFlow(flowObject)
         builder.addType(flowObject.build())
 
 

@@ -1,12 +1,11 @@
 package com.stefano.corda.workflow
 
+import com.squareup.kotlinpoet.FileSpec
 import com.stefano.corda.workflow.ContinuingTransition.Companion.wrap
 import com.stefano.corda.workflow.stages.AttachFileStage
-import com.stefano.corda.workflow.stages.OpenStage
 import com.stefano.corda.workflow.stages.UpdateSingleFieldStage
-import com.sun.xml.internal.bind.v2.schemagen.episode.Klass
 import net.corda.core.contracts.LinearState
-import kotlin.reflect.KClass
+import kotlin.reflect.jvm.internal.impl.util.Checks
 
 
 fun main(args: Array<String>) {
@@ -18,6 +17,8 @@ fun main(args: Array<String>) {
 
 //    val checks = ChecksGenerator("FileUploadAndCheck", start).printOutFlow().generate()
 
-    println(OpenStage<DemoState>(DemoState::class).toFlow("FileUploadAndCheck", start))
-    println(Class.forName(DemoState::document::returnType.toString()).kotlin)
+    val generatedChecks = ChecksGenerator("FileUploadAndCheck", start).generate()
+
+    FileSpec.builder("com.r3.workflows.generated", "Checks").addType(generatedChecks.build()).build().writeTo(System.out)
+    UpdateSingleFieldStage(DemoState::documentReviewed).toFlow("FileUploadAndCheck", stage3).writeTo(System.out)
 }

@@ -1,17 +1,16 @@
 package com.stefano.corda.workflow
 
-import com.squareup.kotlinpoet.FileSpec
-import com.squareup.kotlinpoet.FunSpec
-import com.squareup.kotlinpoet.ParameterizedTypeName
-import com.squareup.kotlinpoet.TypeSpec
+import co.paralleluniverse.fibers.Suspendable
+import com.squareup.kotlinpoet.*
 import net.corda.core.contracts.LinearState
+import net.corda.core.contracts.StateAndRef
 import net.corda.core.contracts.UniqueIdentifier
-import net.corda.core.flows.FlowLogic
-import net.corda.core.flows.InitiatingFlow
-import net.corda.core.flows.StartableByRPC
+import net.corda.core.flows.*
+import net.corda.core.node.services.Vault
+import net.corda.core.node.services.vault.QueryCriteria
+import net.corda.core.transactions.SignedTransaction
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
-import kotlin.reflect.KType
 
 interface Stage<T : LinearState, out O : Any> {
 
@@ -36,25 +35,65 @@ interface Stage<T : LinearState, out O : Any> {
         return initiatorBuilder
     }
 
-    fun buildInitiatorForUpdateType(classOfInput: KClass<*>): TypeSpec.Builder {
+    fun <T : LinearState> buildLookup(classOfState: KClass<T>): FunSpec.Builder{
+        return FunSpec.builder("loadInput")
+                .addParameter("identifier", UniqueIdentifier::class)
+                .returns(ParameterizedTypeName.get(StateAndRef::class, classOfState))
+                .addModifiers(KModifier.PRIVATE, KModifier.INLINE)
+                .addStatement("val criteria = %T(linearId = listOf(identifier), status=%T.UNCONSUMED)",
+                        QueryCriteria.LinearStateQueryCriteria::class,
+                        Vault.StateStatus::class)
+                .addStatement("return serviceHub.vaultService.queryBy<%T>(%T::class.java, criteria).states.single()", classOfState, classOfState)
+    }
+
+    fun buildInitiatorForUpdateType(vararg namesAndTypes: Pair<String, KClass<*>>): TypeSpec.Builder {
+        val constructorBuilder = FunSpec.constructorBuilder()
+
+        namesAndTypes.forEach { nameAndType ->
+            val name: String = nameAndType.first;
+            val type: KClass<*> = nameAndType.second;
+
+            constructorBuilder.addParameter("val " + name, type)
+        }
+
         val initiatorBuilder = TypeSpec.classBuilder("Inititator")
                 .addAnnotation(InitiatingFlow::class)
                 .addAnnotation(StartableByRPC::class)
-                .primaryConstructor(FunSpec.constructorBuilder()
-                        .addParameter("val input", classOfInput)
-                        .addParameter("val stateId", UniqueIdentifier::class)
+                .primaryConstructor(constructorBuilder
                         .build())
                 .superclass(ParameterizedTypeName.get(FlowLogic::class, UniqueIdentifier::class))
         return initiatorBuilder
     }
 
-    fun buildInitiatorForUpdateType(typeOfInput: KType): TypeSpec.Builder {
+    fun buildDumbResponderFlow(flowObject: TypeSpec.Builder) {
 
-        if (typeOfInput.classifier is KClass<*>){
-            return buildInitiatorForUpdateType(typeOfInput.classifier as KClass<*>)
-        }else{
-            throw IllegalArgumentException(typeOfInput.toString() + " cannot be processed")
-        }
+        val responderBuilder = TypeSpec.classBuilder("Responder")
+                .addAnnotation(InitiatingFlow::class)
+                .addAnnotation(AnnotationSpec.builder(InitiatedBy::class).addMember("Inititator::class").build())
+                .primaryConstructor(FunSpec.constructorBuilder().addParameter("val counterpartySession", FlowSession::class).build())
+                .superclass(ParameterizedTypeName.get(FlowLogic::class, SignedTransaction::class))
+
+        val callBuilder = FunSpec.builder("call").returns(SignedTransaction::class).addModifiers(KModifier.OVERRIDE).addAnnotation(Suspendable::class)
+
+
+        val blindSignText = """
+                val flow = object : %T(counterpartySession) {
+                    @Suspendable
+                    override fun checkTransaction(stx: SignedTransaction) {
+                        //all checks delegated to contract
+                    }
+                }
+
+                val stx = subFlow(flow)
+                return waitForLedgerCommit(stx.id)
+            """
+
+
+        callBuilder.addStatement(blindSignText, SignTransactionFlow::class)
+        responderBuilder.addFunction(callBuilder.build())
+        flowObject.addType(responderBuilder.build())
+
+
     }
 
 }
