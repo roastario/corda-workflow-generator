@@ -1,30 +1,33 @@
 package com.r3.workflows.generated
 
-import net.corda.core.contracts.Command
+import kotlin.String
+import kotlin.jvm.JvmStatic
 import net.corda.core.contracts.CommandData
+import net.corda.core.contracts.Contract
+import net.corda.core.contracts.LinearState
+import net.corda.core.transactions.LedgerTransaction
 
-class FileUploadAndCheckWorkflowContract {
-    companion object {
-        @JvmStatic
-        val CONTRACT_ID = "com.stefano.corda.deposits.DepositContract"
-
+class FileUploadAndCheckWorkflowContract : Contract {
+    override fun verify(tx: LedgerTransaction) {
+        val input = tx.inputsOfType<LinearState>().first()
+        val output = tx.outputsOfType<LinearState>().first()
+        val validTransition = FileUploadAndCheckWorkFlowChecks.canTransition(input, output, null)
     }
 
+    companion object {
+        @JvmStatic
+        val CONTRACT_ID: String = FileUploadAndCheckWorkflowContract::class.qualifiedName!!
+    }
 
     interface Commands : CommandData {
-        class Open : Commands
-        class FileAttached : Commands
-        class DocumentReviewed : Commands
-        class LandlordDeduct : Commands
-        class TenantDeduct : Commands
-        class RequestRefund : Commands
-        class SendBackToTenant : Commands
-        class SendBackToLandlord : Commands
-        class Refund : Commands
-        class SendToArbitrator : Commands {
-        }
+        class Start : Commands
 
-        class Arbitrate : Commands {
-        }
+        class Open : Commands
+
+        class FileAttached : Commands
+
+        class DocumentReviewed : Commands
+
+        class DocumentPublished : Commands
     }
 }
