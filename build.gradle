@@ -27,6 +27,7 @@ dependencies {
     compile "org.jetbrains.kotlin:kotlin-reflect:$kotlin_version"
     compile 'com.squareup:kotlinpoet:0.6.0'
     compile "net.corda:corda-core:2.0.0"
+    compile "net.corda:corda-finance:2.0.0"
     compile "com.google.guava:guava:21.0"
     compile group: 'info.leadinglight', name: 'jdot', version: '1.0'
 }

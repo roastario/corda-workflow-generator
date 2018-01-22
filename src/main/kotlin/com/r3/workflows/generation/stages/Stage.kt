@@ -13,6 +13,7 @@ import net.corda.core.node.services.vault.QueryCriteria
 import net.corda.core.transactions.SignedTransaction
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty1
+import kotlin.reflect.KType
 
 interface Stage<T : LinearState> {
 
@@ -26,6 +27,7 @@ interface Stage<T : LinearState> {
         fun getContractNameForWorkflow(name: String): String {
             return getWorkflowName(name) + "Contract"
         }
+
         fun getWorkflowName(name: String) = name + "Workflow"
     }
 
@@ -38,7 +40,7 @@ interface Stage<T : LinearState> {
         return initiatorBuilder
     }
 
-    fun <T : LinearState> buildLookup(classOfState: KClass<T>): FunSpec.Builder{
+    fun <T : LinearState> buildLookup(classOfState: KClass<T>): FunSpec.Builder {
         return FunSpec.builder("loadInput")
                 .addParameter("identifier", UniqueIdentifier::class)
                 .returns(ParameterizedTypeName.get(StateAndRef::class, classOfState))
@@ -49,14 +51,33 @@ interface Stage<T : LinearState> {
                 .addStatement("return serviceHub.vaultService.queryBy<%T>(%T::class.java, criteria).states.single()", classOfState, classOfState)
     }
 
-    fun buildInitiatorForUpdateType(vararg namesAndTypes: Pair<String, KClass<*>>): TypeSpec.Builder {
+    fun buildTypeNameFromType(type: Any): TypeName {
+
+        return when (type) {
+            is KClass<*> -> {
+                ClassName.bestGuess(type.qualifiedName!!)
+            }
+            is KType -> {
+                val varArgs = type.arguments.map { it.type!!.classifier as KClass<*> }.map { ClassName.bestGuess(it.qualifiedName!!) }.toTypedArray()
+                val className = ClassName.bestGuess((type.classifier as KClass<*>).qualifiedName!!)
+                if (!varArgs.isEmpty()) ParameterizedTypeName.get(className, *varArgs) else className
+            }
+            else -> {
+                throw IllegalStateException();
+            }
+        }
+
+    }
+
+    fun buildInitiatorForUpdateType(vararg namesAndTypes: Pair<String, Any>): TypeSpec.Builder {
         val constructorBuilder = FunSpec.constructorBuilder()
 
         namesAndTypes.forEach { nameAndType ->
             val name: String = nameAndType.first;
-            val type: KClass<*> = nameAndType.second;
+            val type = nameAndType.second;
 
-            constructorBuilder.addParameter("val " + name, type)
+
+            constructorBuilder.addParameter("val " + name, buildTypeNameFromType(type))
         }
 
         val initiatorBuilder = TypeSpec.classBuilder("Inititator")

@@ -9,6 +9,7 @@ import com.squareup.kotlinpoet.KModifier
 import com.squareup.kotlinpoet.TypeSpec
 import info.leadinglight.jdot.Node
 import info.leadinglight.jdot.enums.Shape
+import net.corda.core.contracts.Amount
 import net.corda.core.contracts.Command
 import net.corda.core.contracts.LinearState
 import net.corda.core.contracts.UniqueIdentifier
@@ -16,13 +17,20 @@ import net.corda.core.flows.CollectSignaturesFlow
 import net.corda.core.flows.FinalityFlow
 import net.corda.core.identity.Party
 import net.corda.core.transactions.TransactionBuilder
+import net.corda.finance.contracts.asset.Cash
+import java.util.*
 import kotlin.reflect.KProperty1
 
-class UpdateSingleFieldStage<IN : LinearState, OUT : Any>(private val property: KProperty1<IN, OUT?>) : Stage<IN> {
+class UpdateSingleFieldAndGenerateCashMovementStage<IN : LinearState, OUT : Any>(
+        private val underlying: UpdateSingleFieldStage<IN, OUT>,
+        private val propertyForPayment: KProperty1<IN, Party?>,
+        private val propertyForPaymentAmount: KProperty1<IN, Amount<Currency>?>) : Stage<IN> {
 
     override fun toDot(workflowName: String, transition: ContinuingTransition<*, *>): Node {
         return Node(transition.stageName.capitalize()).setShape(Shape.rect)
-                .setLabel("Updates: " + transition.thisClass.simpleName + "::" + property.name)
+                .setLabel("Updates: " + transition.thisClass.simpleName + "::" + property().name + "\n"
+                        + "and generates a cash movement to " + transition.thisClass.simpleName + "::" + propertyForPayment.name + "\n"
+                        + "for amount " + transition.thisClass.simpleName + "::" + propertyForPaymentAmount.name)
     }
 
 
@@ -46,7 +54,7 @@ class UpdateSingleFieldStage<IN : LinearState, OUT : Any>(private val property: 
 
         callBuilder.addStatement("val inputRefAndState = loadInput(identifier)")
         callBuilder.addStatement("val input = inputRefAndState.state.data")
-        callBuilder.addStatement("val output = input.copy(%L=update)", property.name)
+        callBuilder.addStatement("val output = input.copy(%L=update)", property().name)
 
         callBuilder.addStatement("val proposedTransaction: %T = %T(notary)\n" +
                 ".addInputState(inputRefAndState)\n" +
@@ -58,6 +66,9 @@ class UpdateSingleFieldStage<IN : LinearState, OUT : Any>(private val property: 
         )
 
 
+        callBuilder.addStatement("val partyToPay = %T::%L.get(input)", transition.thisClass, propertyForPayment.name)
+        callBuilder.addStatement("val amountToPay = %T::%L.get(input)!!", transition.thisClass, propertyForPaymentAmount.name)
+        callBuilder.addStatement("%T.generateSpend(serviceHub, proposedTransaction, amountToPay, partyToPay)", Cash::class)
         callBuilder.addStatement("proposedTransaction.verify(serviceHub)")
         callBuilder.addStatement("val ourSignedTransaction = serviceHub.signInitialTransaction(proposedTransaction)")
         callBuilder.addStatement("val counterPartySession = initiateFlow(toSendTo)")
@@ -74,7 +85,7 @@ class UpdateSingleFieldStage<IN : LinearState, OUT : Any>(private val property: 
     }
 
     override fun property(): KProperty1<IN, OUT?> {
-        return property;
+        return underlying.property();
     }
 
 
