@@ -27,7 +27,7 @@ data class ContinuingTransition<PREVIOUS : LinearState, CURRENT : LinearState>(
 
     fun transition(stageName: String,
                    stageDescription: Stage<CURRENT>,
-                   transitioner: KProperty1<CURRENT, AbstractParty>): ContinuingTransition<CURRENT, CURRENT> {
+                   transitioner: KProperty1<CURRENT, AbstractParty?>): ContinuingTransition<CURRENT, CURRENT> {
         val nextStage = ContinuingTransition(thisClass, this, stageName, stageDescription, transitioner)
         this.nextStage = nextStage
         return nextStage;
