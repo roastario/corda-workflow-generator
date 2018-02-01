@@ -15,7 +15,7 @@ data class ContinuingTransition<PREVIOUS : LinearState, CURRENT : LinearState>(
         val partyAllowedToTransition: KProperty1<CURRENT, AbstractParty?>?,
         var nextStage: ContinuingTransition<CURRENT, *>? = null) {
 
-    object Companion {
+    companion object {
         fun <T : LinearState> wrap(stateClass: KClass<T>): ContinuingTransition<LinearState, T> {
             return ContinuingTransition(stateClass,
                     null, "start",

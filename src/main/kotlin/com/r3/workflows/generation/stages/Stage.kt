@@ -17,6 +17,10 @@ import kotlin.reflect.KType
 
 interface Stage<T : LinearState> {
 
+    val initiatorName: String
+        get() = "Initiator"
+
+
     fun property(): KProperty1<T, Any?>
 
     fun toFlow(workflowName: String, transition: ContinuingTransition<*, *>): TypeSpec
@@ -32,7 +36,7 @@ interface Stage<T : LinearState> {
     }
 
     fun buildInitiatorType(classOfInput: KClass<*>): TypeSpec.Builder {
-        val initiatorBuilder = TypeSpec.classBuilder("Inititator")
+        val initiatorBuilder = TypeSpec.classBuilder(initiatorName)
                 .addAnnotation(InitiatingFlow::class)
                 .addAnnotation(StartableByRPC::class)
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("val input", classOfInput).build())
@@ -40,11 +44,13 @@ interface Stage<T : LinearState> {
         return initiatorBuilder
     }
 
+
+    //ALL Flows will have
     fun <T : LinearState> buildLookup(classOfState: KClass<T>): FunSpec.Builder {
         return FunSpec.builder("loadInput")
                 .addParameter("identifier", UniqueIdentifier::class)
                 .returns(ParameterizedTypeName.get(StateAndRef::class, classOfState))
-                .addModifiers(KModifier.PRIVATE, KModifier.INLINE)
+                .addModifiers(KModifier.PRIVATE)
                 .addStatement("val criteria = %T(linearId = listOf(identifier), status=%T.UNCONSUMED)",
                         QueryCriteria.LinearStateQueryCriteria::class,
                         Vault.StateStatus::class)
@@ -80,7 +86,7 @@ interface Stage<T : LinearState> {
             constructorBuilder.addParameter("val " + name, buildTypeNameFromType(type))
         }
 
-        val initiatorBuilder = TypeSpec.classBuilder("Inititator")
+        val initiatorBuilder = TypeSpec.classBuilder(initiatorName)
                 .addAnnotation(InitiatingFlow::class)
                 .addAnnotation(StartableByRPC::class)
                 .primaryConstructor(constructorBuilder
@@ -89,11 +95,12 @@ interface Stage<T : LinearState> {
         return initiatorBuilder
     }
 
+    //The default responder
     fun buildDumbResponderFlow(flowObject: TypeSpec.Builder) {
 
         val responderBuilder = TypeSpec.classBuilder("Responder")
                 .addAnnotation(InitiatingFlow::class)
-                .addAnnotation(AnnotationSpec.builder(InitiatedBy::class).addMember("Inititator::class").build())
+                .addAnnotation(AnnotationSpec.builder(InitiatedBy::class).addMember("$initiatorName::class").build())
                 .primaryConstructor(FunSpec.constructorBuilder().addParameter("val counterpartySession", FlowSession::class).build())
                 .superclass(ParameterizedTypeName.get(FlowLogic::class, SignedTransaction::class))
 

@@ -94,7 +94,7 @@ class AttachFileStage<T : LinearState>(private val property: KProperty1<T, Secur
 
         return FunSpec.builder("uploadAttachment")
                 .addParameter("attachment", InputStream::class)
-                .addModifiers(KModifier.PRIVATE, KModifier.INLINE)
+                .addModifiers(KModifier.PRIVATE)
                 .returns(SecureHash::class)
                 .addStatement("val outputStream = %T()", ByteArrayOutputStream::class)
                 .beginControlFlow("try ")

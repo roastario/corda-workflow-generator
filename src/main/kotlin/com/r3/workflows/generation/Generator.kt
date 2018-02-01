@@ -1,13 +1,9 @@
 package com.r3.workflows.generation
 
-import com.r3.workflows.generation.ContinuingTransition.Companion.wrap
-import com.r3.workflows.generation.GeneratorDemo2.Companion.generateAll
 import com.r3.workflows.generation.generators.ChecksGenerator
 import com.r3.workflows.generation.generators.ContractGenerator
 import com.r3.workflows.generation.generators.FlowGenerator
 import com.r3.workflows.generation.generators.Generator
-import com.r3.workflows.generation.stages.AttachFileStage
-import com.r3.workflows.generation.stages.UpdateSingleFieldStage
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.TypeSpec
 import info.leadinglight.jdot.Edge
@@ -21,7 +17,7 @@ import java.util.stream.IntStream
 import kotlin.streams.asSequence
 
 
-class GeneratorDemo2 {
+class Generator {
     companion object {
         fun generateAll(workflowName: String, packageOfOutput: String, start: ContinuingTransition<out LinearState, out LinearState>) {
             val generatedChecks = ChecksGenerator(workflowName, start).generate<TypeSpec.Builder>().build()
@@ -72,19 +68,5 @@ class GeneratorDemo2 {
         }
 
     }
-}
-
-
-fun main(args: Array<String>) {
-
-    val start: ContinuingTransition<LinearState, DemoState> = wrap(DemoState::class)
-    val stage1 = start.transition("open", UpdateSingleFieldStage(DemoState::received), DemoState::issuer)
-    val stage2 = stage1.transition("fileAttached", AttachFileStage(DemoState::document), DemoState::issuer)
-    val stage3 = stage2.transition("documentReviewed", UpdateSingleFieldStage(DemoState::documentReviewed), DemoState::owner)
-    val stage4 = stage3.transition("documentPublished", UpdateSingleFieldStage(DemoState::documentPublished), DemoState::owner)
-
-
-    generateAll("FileUploadAndCheck", "com.r3.workflows.generated", start)
-
 }
 
